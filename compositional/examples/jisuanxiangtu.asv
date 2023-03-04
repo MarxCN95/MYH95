@@ -1,0 +1,45 @@
+%% -------------------------------------------含有毛管力----------------------------------------------------------
+clear
+mrstModule add ad-core ad-props mrst-gui compositional deckformat hfm
+global pcswitch fluidint;
+%[filename,pathname]=uigetfile('.data','请打开data文件');
+%fn = fullfile(pathname,filename);%//修改，选择文件
+fn    = fullfile('C:','Users','myh','Desktop','0829','0623_E300.DATA');
+
+deck = readEclipseDeck(fn);
+deck = convertDeckUnits(deck);
+
+G = initEclipseGrid(deck);
+G = computeGeometry(G);
+
+rock  = initEclipseRock(deck);
+rock  = compressRock(rock, G.cells.indexMap);
+%%
+fluidint = initDeckADIFluid(deck);
+
+fluidint.rhoOS = 800;
+fluidint.rhoGS = 10;
+
+eos = initDeckEOSModel(deck);
+
+model = NaturalVariablesCompositionalModel(G, rock, fluidint, eos.fluid, 'water', false);
+
+schedule = convertDeckScheduleToMRST(model, deck);
+[schedule.control.W.components] = deal([0.5, 0.5, 0, 0, 0, 0, 0]);%7个组分
+
+%Injection is pure gas
+%[schedule.control.W.compi] = deal([1, 0]);
+%% Set up initial state
+ncomp = eos.fluid.getNumberOfComponents();
+%7个组分
+z0 = [0.333, 0.333, 0.333, 0, 0, 0, 0];
+T = 60 + 273.15;
+p = 250*barsa;
+
+pcswitch = 0;
+state0 = initCompositionalState(G, p, T, [0.5, 0.5], z0, eos);
+%% Simulate the schedule
+pcswitch = 1;%PR-EOS考虑毛管力的开关
+eos = model.EOSModel;
+[stable, x, y] = phaseStabilityTest(model, z0, p, T, z0, z0, state0);
+            
